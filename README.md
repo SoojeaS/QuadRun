@@ -1,4 +1,4 @@
 # QuadRun
-Simple Platformer JavaScript Game
+Project QuadRun
 
-Bruh
+QuadRun is a simple web-based singleplayer platformer game built on JavaScript.
