@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuadRun</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    canvas {
+      border: 2px solid white;
+      background-color: #333;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const GRAVITY = 0.5;
+
+    const player = {
+      x: 50,
+      y: 300,
+      width: 30,
+      height: 30,
+      vx: 0,
+      vy: 0,
+      onGround: false
+    };
+
+    const keys = {};
+
+    const platforms = [
+      { x: 0, y: 350, width: 800, height: 50 },
+      { x: 200, y: 280, width: 100, height: 10 },
+      { x: 400, y: 220, width: 100, height: 10 },
+      { x: 300, y: 250, width: 20, height: 100 },
+      { x: 500, y: 180, width: 20, height: 120 }
+    ];
+
+    const spikes = [
+      { x: 600, y: 330, width: 30, height: 20 },
+      { x: 270, y: 260, width: 30, height: 20 }
+    ];
+
+    document.addEventListener("keydown", e => keys[e.code] = true);
+    document.addEventListener("keyup", e => keys[e.code] = false);
+
+    function update() {
+      // Movement
+      if (keys["ArrowLeft"]) player.vx = -3;
+      else if (keys["ArrowRight"]) player.vx = 3;
+      else player.vx = 0;
+
+      if (keys["Space"] && player.onGround) {
+        player.vy = -10;
+        player.onGround = false;
+      }
+
+      // Physics
+      player.vy += GRAVITY;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // Platform collision
+      player.onGround = false;
+      for (let plat of platforms) {
+        if (isColliding(player, plat)) {
+          if (player.vy > 0 && player.y + player.height <= plat.y + player.vy) {
+            player.y = plat.y - player.height;
+            player.vy = 0;
+            player.onGround = true;
+          }
+        }
+      }
+
+      // Spike collision
+      for (let spike of spikes) {
+        if (isColliding(player, spike)) {
+          alert("Game Over!");
+          resetGame();
+        }
+      }
+
+      for (let plat of platforms) {
+        if (isColliding(player, plat)) {
+          // Left side collision
+          if (player.vx > 0 && player.x + player.width <= plat.x + player.vx) {
+            player.x = plat.x - player.width;
+            player.vx = 0;
+          }
+          // Right side collision
+          else if (player.vx < 0 && player.x >= plat.x + plat.width + player.vx) {
+            player.x = plat.x + plat.width;
+            player.vx = 0;
+          }
+        }
+      }
+
+      // Fall off the map
+      if (player.y > canvas.height) {
+        alert("Game Over!");
+        resetGame();
+      }
+    }
+
+    function isColliding(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
+    function resetGame() {
+      player.x = 50;
+      player.y = 300;
+      player.vx = 0;
+      player.vy = 0;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Player
+      ctx.fillStyle = "cyan";
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // Platforms
+      ctx.fillStyle = "gray";
+      for (let plat of platforms) {
+        ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+      }
+
+      // Spikes
+      ctx.fillStyle = "red";
+      for (let spike of spikes) {
+        ctx.beginPath();
+        ctx.moveTo(spike.x, spike.y + spike.height);
+        ctx.lineTo(spike.x + spike.width / 2, spike.y);
+        ctx.lineTo(spike.x + spike.width, spike.y + spike.height);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
