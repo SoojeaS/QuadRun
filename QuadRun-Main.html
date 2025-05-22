@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuadRun</title>
+<style>
+  body {
+    margin: 0;
+    background-color: #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    color: white;
+    font-family: sans-serif;
+    position: relative;
+  }
+  canvas {
+    border: 2px solid white;
+    background-color: #333;
+  }
+  .controls {
+    margin-top: 10px;
+    font-size: 18px;
+    color: #ccc;
+    text-align: center;
+  }
+  #playButton {
+    position: absolute;
+    top: 60%;
+    transform: translateY(-50%);
+    padding: 20px 40px;
+    border-radius: 50px;
+    font-size: 24px;
+    background-color: #28a745;
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: none;
+    transition: background-color 0.3s;
+    z-index: 10;
+  }
+  #playButton:hover {
+    background-color: #218838;
+  }
+  #levelButtons button {
+    padding: 12px 24px;
+    margin: 5px;
+    font-size: 18px;
+    border-radius: 10px;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  #levelButtons button:hover {
+    background-color: #0056b3;
+  }
+  #pauseMenu, #winScreen, #gameOverScreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0,0,0,0.75);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  .pause-content, .win-content, .game-over-content {
+    background-color: #222;
+    padding: 30px 50px;
+    border-radius: 15px;
+    text-align: center;
+    color: white;
+    font-family: sans-serif;
+  }
+  .pause-content h2, .win-content h2, .game-over-content h2 {
+    margin-bottom: 20px;
+    font-size: 36px;
+  }
+  .pause-content button, .win-content button, .game-over-content button {
+    display: block;
+    width: 180px;
+    margin: 12px auto;
+    padding: 12px;
+    font-size: 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background-color: #28a745;
+    color: white;
+    transition: background-color 0.3s;
+  }
+  .pause-content button:hover, 
+  .win-content button:hover,
+  .game-over-content button:hover {
+    background-color: #218838;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="1280" height="720"></canvas>
+<div id="levelButtons" style="display: none; margin-top: 10px;">
+  <button onclick="loadLevel(1)">Level 1 (Easy)</button>
+  <button onclick="loadLevel(2)">Level 2 (Normal)</button>
+  <button onclick="loadLevel(3)">Level 3 (Hard)</button>
+</div>
+<button id="playButton">Play</button>
+<div class="controls">
+  Move: ← → | Jump: Space | Pause: P or Esc
+</div>
+
+<!-- Pause screen -->
+<div id="pauseMenu">
+  <div class="pause-content">
+    <h2>Paused</h2>
+    <button id="retryBtn">Retry</button>
+    <button id="continueBtn">Continue</button>
+    <button id="levelSelectBtn">Level Select</button>
+  </div>
+</div>
+
+<!-- Win screen -->
+<div id="winScreen">
+  <div class="win-content">
+    <h2>Level Complete!</h2>
+    <button id="nextLevelBtn">Next Level</button>
+    <button id="winLevelSelectBtn">Level Select</button>
+  </div>
+</div>
+
+<!-- Game Over screen -->
+<div id="gameOverScreen">
+  <div class="game-over-content">
+    <h2>Game Over</h2>
+    <button id="gameOverRetryBtn">Retry</button>
+    <button id="gameOverLevelSelectBtn">Level Select</button>
+  </div>
+</div>
+
+<script>
+  // Elements & context
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const playButton = document.getElementById("playButton");
+  const pauseMenu = document.getElementById("pauseMenu");
+  const winScreen = document.getElementById("winScreen");
+  const gameOverScreen = document.getElementById("gameOverScreen");
+  const retryBtn = document.getElementById("retryBtn");
+  const continueBtn = document.getElementById("continueBtn");
+  const levelSelectBtn = document.getElementById("levelSelectBtn");
+  const nextLevelBtn = document.getElementById("nextLevelBtn");
+  const winLevelSelectBtn = document.getElementById("winLevelSelectBtn");
+  const gameOverRetryBtn = document.getElementById("gameOverRetryBtn");
+  const gameOverLevelSelectBtn = document.getElementById("gameOverLevelSelectBtn");
+
+  // Constants and state
+  const GRAVITY = 0.5;
+  let gameState = "loading"; // "loading", "title", "levelSelect", "playing", "gameOver", "win", "paused"
+  let currentLevel = 1;
+
+  // Player object and input
+  const player = { x: 0, y: 0, width: 30, height: 30, vx: 0, vy: 0, onGround: false };
+  const keys = {};
+
+  // Level data
+  const levels = {
+    1: {
+      platforms: [
+        { x: 0, y: canvas.height - 50, width: 1280, height: 50 },
+        { x: 300, y: 600, width: 150, height: 20 },
+        { x: 520, y: 550, width: 150, height: 20 },
+        { x: 740, y: 500, width: 150, height: 20 },
+        { x: 960, y: 450, width: 150, height: 20 }
+      ],
+      spikes: [
+        { x: 450, y: 650, width: 30, height: 20 },
+        { x: 750, y: 650, width: 30, height: 20 }
+      ],
+      winPlatform: { x: 1180, y: 400, width: 50, height: 20, color: "limegreen" },
+      startPos: { x: 50, y: canvas.height - 80 }
+    },
+    2: {
+      platforms: [
+        { x: 0, y: canvas.height - 50, width: 1280, height: 50 },
+        { x: 150, y: 600, width: 90, height: 20 },
+        { x: 330, y: 550, width: 90, height: 20 },
+        { x: 600, y: 600, width: 90, height: 20 },
+        { x: 840, y: 600, width: 90, height: 20 },
+        { x: 1000, y: 550, width: 90, height: 20 },
+        { x: 840, y: 500, width: 90, height: 20 },
+        { x: 680, y: 450, width: 90, height: 20 }
+      ],
+      walls: [
+      { x: 450, y: 520, width: 30, height: 150 }
+      ],
+      spikes: [
+        { x: 150, y: 650, width: 30, height: 20 },
+        { x: 180, y: 650, width: 30, height: 20 },
+        { x: 210, y: 650, width: 30, height: 20 },
+        { x: 330, y: 650, width: 30, height: 20 },
+        { x: 360, y: 650, width: 30, height: 20 },
+        { x: 390, y: 650, width: 30, height: 20 },
+        { x: 450, y: 510, width: 30, height: 10 },
+        { x: 540, y: 650, width: 30, height: 20 },
+        { x: 570, y: 650, width: 30, height: 20 },
+        { x: 600, y: 650, width: 30, height: 20 },
+        { x: 630, y: 650, width: 30, height: 20 },
+        { x: 660, y: 650, width: 30, height: 20 },
+        { x: 690, y: 650, width: 30, height: 20 },
+        { x: 720, y: 650, width: 30, height: 20 },
+        { x: 840, y: 650, width: 30, height: 20 },
+        { x: 870, y: 650, width: 30, height: 20 },
+        { x: 900, y: 650, width: 30, height: 20 }
+      ],
+      winPlatform: { x: 520, y: 400, width: 90, height: 20, color: "limegreen" },
+      startPos: { x: 50, y: canvas.height - 80 }
+    },
+    3: {
+      platforms: [
+        { x: 0, y: canvas.height - 50, width: 1280, height: 50 },
+        { x: 180, y: 610, width: 150, height: 20 },
+        { x: 450, y: 580, width: 150, height: 20 },
+        { x: 1130, y: 610, width: 150, height: 20 },
+        { x: 920, y: 550, width: 150, height: 20 }
+      ],
+      walls: [
+      { x: 150, y: 610, width: 30, height: 60 },
+      { x: 330, y: 610, width: 30, height: 60 },
+      { x: 420, y: 580, width: 30, height: 90 },
+      { x: 600, y: 580, width: 30, height: 90 }
+      ],
+      spikes: [
+        { x: 330, y: 590, width: 30, height: 20 },
+        { x: 360, y: 650, width: 30, height: 20 },
+        { x: 390, y: 650, width: 30, height: 20 },
+        { x: 600, y: 560, width: 30, height: 20 },
+        { x: 630, y: 650, width: 30, height: 20 },
+        { x: 720, y: 650, width: 30, height: 20 },
+        { x: 750, y: 650, width: 30, height: 20 },
+        { x: 850, y: 640, width: 45, height: 30 },
+        { x: 920, y: 530, width: 30, height: 20 }
+      ],
+      winPlatform: { x: 850, y: 490, width: 30, height: 20, color: "limegreen" },
+      startPos: { x: 50, y: canvas.height - 80 }
+    }
+  };
+
+  // Current level elements
+  let platforms = [];
+  let spikes = [];
+  let walls = [];
+  let winPlatform = null;
+
+  // Play button event
+  playButton.addEventListener("click", () => {
+    gameState = "levelSelect";
+    playButton.style.display = "none";
+  });
+
+  // Load selected level
+  function loadLevel(level) {
+    currentLevel = level;
+    const lvl = levels[level];
+    platforms = lvl.platforms;
+    spikes = lvl.spikes;
+    walls = lvl.walls || [];
+    winPlatform = lvl.winPlatform;
+    gameState = "playing";
+
+    player.x = lvl.startPos.x;
+    player.y = lvl.startPos.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.onGround = false;
+
+    document.activeElement.blur(); // Remove focus from buttons
+    pauseMenu.style.display = "none"; // Hide pause menu
+    winScreen.style.display = "none"; // Hide win screen
+    gameOverScreen.style.display = "none"; // Hide game over screen
+  }
+
+  // Reset player position and velocity
+  function resetGame() {
+    const lvl = levels[currentLevel];
+    player.x = lvl.startPos.x;
+    player.y = lvl.startPos.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.onGround = false;
+  }
+
+  // Game state changes
+  function triggerGameOver() { 
+    gameState = "gameOver";
+    gameOverScreen.style.display = "flex";
+    winScreen.style.display = "none";
+  }
+  
+  function triggerWin() { 
+    gameState = "win";
+    winScreen.style.display = "flex";
+    gameOverScreen.style.display = "none";
+    // Hide Next Level button if on last level
+    document.getElementById("nextLevelBtn").style.display = currentLevel < 3 ? "block" : "none";
+  }
+
+  // Keyboard input handling
+  document.addEventListener("keydown", e => {
+    keys[e.code] = true;
+
+    // Pause with P or Escape
+    if ((gameState === "playing" || gameState === "paused") && (e.code === "KeyP" || e.code === "Escape")) {
+      gameState = gameState === "playing" ? "paused" : "playing";
+      pauseMenu.style.display = gameState === "paused" ? "flex" : "none";
+    }
+  });
+
+  document.addEventListener("keyup", e => { keys[e.code] = false; });
+
+  // Game logic and physics
+  function update() {
+    if (gameState !== "playing") return;
+
+    player.vx = 0;
+    if (keys["ArrowLeft"]) player.vx = -3;
+    else if (keys["ArrowRight"]) player.vx = 3;
+
+    if (keys["Space"] && player.onGround) {
+      player.vy = -10;
+      player.onGround = false;
+    }
+
+    player.vy += GRAVITY;
+    player.x += player.vx;
+    player.y += player.vy;
+
+    // Boundary checks
+    if (player.x < 0) { player.x = 0; player.vx = 0; }
+    if (player.x + player.width > canvas.width) {
+      player.x = canvas.width - player.width;
+      player.vx = 0;
+    }
+
+    player.onGround = false;
+
+    // Collision detection with platforms
+    for (let plat of platforms) {
+      if (isColliding(player, plat)) {
+        const overlapLeft = player.x + player.width - plat.x;
+        const overlapRight = plat.x + plat.width - player.x;
+        const overlapTop = player.y + player.height - plat.y;
+        const overlapBottom = plat.y + plat.height - player.y;
+        const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+        if (minOverlap === overlapTop) {
+          player.y = plat.y - player.height;
+          player.vy = 0;
+          player.onGround = true;
+        } else if (minOverlap === overlapBottom) {
+          player.y = plat.y + plat.height;
+          player.vy = 0;
+        } else if (minOverlap === overlapLeft) {
+          player.x = plat.x - player.width;
+          player.vx = 0;
+        } else if (minOverlap === overlapRight) {
+          player.x = plat.x + plat.width;
+          player.vx = 0;
+        }
+      }
+    }
+
+    // Collision detection with walls
+    for (let wall of walls) {
+      if (isColliding(player, wall)) {
+        const overlapLeft = player.x + player.width - wall.x;
+        const overlapRight = wall.x + wall.width - player.x;
+        const overlapTop = player.y + player.height - wall.y;
+        const overlapBottom = wall.y + wall.height - player.y;
+        const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+        if (minOverlap === overlapTop) {
+          player.y = wall.y - player.height;
+          player.vy = 0;
+          player.onGround = true;
+        } else if (minOverlap === overlapBottom) {
+          player.y = wall.y + wall.height;
+          player.vy = 0;
+        } else if (minOverlap === overlapLeft) {
+          player.x = wall.x - player.width;
+          player.vx = 0;
+        } else if (minOverlap === overlapRight) {
+          player.x = wall.x + wall.width;
+          player.vx = 0;
+        }
+      }
+    }
+
+    // Spike collision
+    for (let spike of spikes) {
+      if (isColliding(player, spike)) {
+        triggerGameOver();
+        return;
+      }
+    }
+
+    // Fall off screen detection
+    if (player.y > canvas.height) {
+      triggerGameOver();
+      return;
+    }
+
+    // Win condition
+    if (isColliding(player, winPlatform)) triggerWin();
+  }
+
+  // Rectangle collision test
+  function isColliding(a, b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+  }
+
+  // Render everything
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === "loading") {
+      ctx.fillStyle = "white";
+      ctx.font = "48px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Loading...", canvas.width / 2, canvas.height / 2);
+      setTimeout(() => { gameState = "title"; }, 500);
+      playButton.style.display = "none";
+      document.getElementById("levelButtons").style.display = "none";
+      return;
+    }
+
+    if (gameState === "title") {
+      ctx.fillStyle = "white";
+      ctx.font = "60px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("QuadRun", canvas.width / 2, canvas.height / 2 - 100);
+      playButton.style.display = "block";
+      document.getElementById("levelButtons").style.display = "none";
+      return;
+    }
+
+    if (gameState === "levelSelect") {
+      ctx.fillStyle = "white";
+      ctx.font = "48px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Select Level", canvas.width / 2, canvas.height / 2 - 100);
+      playButton.style.display = "none";
+      document.getElementById("levelButtons").style.display = "block";
+      return;
+    }
+
+    if (gameState === "gameOver") {
+      // The game over screen overlay will handle the visual display
+      return;
+    }
+
+    if (gameState === "win") {
+      // The win screen overlay will handle the visual display
+      return;
+    }
+
+    // Playing state: hide UI elements
+    playButton.style.display = "none";
+    document.getElementById("levelButtons").style.display = "none";
+
+    // Player
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+
+    // Platforms
+    ctx.fillStyle = "gray";
+    for (let plat of platforms) {
+      ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+    }
+
+    // Walls
+    ctx.fillStyle = "#555"; // darker gray
+    for (let wall of walls) {
+      ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+    }
+
+    // Spikes
+    ctx.fillStyle = "red";
+    for (let spike of spikes) {
+      ctx.beginPath();
+      ctx.moveTo(spike.x, spike.y + spike.height);
+      ctx.lineTo(spike.x + spike.width / 2, spike.y);
+      ctx.lineTo(spike.x + spike.width, spike.y + spike.height);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Win platform
+    ctx.fillStyle = winPlatform.color;
+    ctx.fillRect(winPlatform.x, winPlatform.y, winPlatform.width, winPlatform.height);
+  }
+
+  // Button event handlers
+  retryBtn.addEventListener("click", () => {
+    resetGame();
+    gameState = "playing";
+    pauseMenu.style.display = "none";
+  });
+
+  continueBtn.addEventListener("click", () => {
+    gameState = "playing";
+    pauseMenu.style.display = "none";
+  });
+
+  levelSelectBtn.addEventListener("click", () => {
+    gameState = "levelSelect";
+    pauseMenu.style.display = "none";
+  });
+
+  nextLevelBtn.addEventListener("click", () => {
+    if (currentLevel < 3) {
+      loadLevel(currentLevel + 1);
+    }
+  });
+
+  winLevelSelectBtn.addEventListener("click", () => {
+    gameState = "levelSelect";
+    winScreen.style.display = "none";
+  });
+
+  gameOverRetryBtn.addEventListener("click", () => {
+    resetGame();
+    gameState = "playing";
+    gameOverScreen.style.display = "none";
+  });
+
+  gameOverLevelSelectBtn.addEventListener("click", () => {
+    gameState = "levelSelect";
+    gameOverScreen.style.display = "none";
+  });
+
+  // Main game loop
+  function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  gameLoop();
+</script>
+</body>
+</html>
